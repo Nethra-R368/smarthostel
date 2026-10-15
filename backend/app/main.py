@@ -55,9 +55,14 @@ def on_startup():
         from .database import engine, Base
         from . import models
         Base.metadata.create_all(bind=engine)
-        print("Database tables verified/created successfully on startup.")
+        print("Database tables verified on startup.")
     except Exception as e:
-        print(f"Startup database check note: {e}")
+        err_type = type(e).__name__
+        print(f"Database connection note during startup: {err_type} occurred. Verification skipped.")
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
 @app.get("/")
 def read_root():

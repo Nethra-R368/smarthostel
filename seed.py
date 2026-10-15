@@ -18,40 +18,61 @@ def create_database_if_not_exists():
     from sqlalchemy import create_engine
     import urllib.parse
     db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/smarthostel")
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+        
+    # Cloud managed databases (Render, AWS, Azure) are already created by the platform
+    if "localhost" not in db_url and "127.0.0.1" not in db_url:
+        return
     
-    # Parse URL to handle query parameters (like sslmode=require) and DB name cleanly
     parsed = urllib.parse.urlparse(db_url)
     db_name = parsed.path.lstrip("/")
-    
-    # Reconstruct the connection URL pointing to the default 'postgres' database
     base_url = f"{parsed.scheme}://{parsed.netloc}"
-    if parsed.query:
-        postgres_url = f"{base_url}/postgres?{parsed.query}"
-    else:
-        postgres_url = f"{base_url}/postgres"
+    postgres_url = f"{base_url}/postgres?{parsed.query}" if parsed.query else f"{base_url}/postgres"
         
-    temp_engine = create_engine(postgres_url)
     try:
+        temp_engine = create_engine(postgres_url)
         with temp_engine.connect() as conn:
             conn.execution_options(isolation_level="AUTOCOMMIT")
             result = conn.execute(text(f"SELECT 1 FROM pg_database WHERE datname='{db_name}'")).scalar()
             if not result:
-                print(f"Database '{db_name}' does not exist. Creating database programmatically...")
+                print(f"Local database '{db_name}' does not exist. Creating...")
                 conn.execute(text(f"CREATE DATABASE {db_name}"))
                 print(f"Database '{db_name}' created successfully!")
-            else:
-                print(f"Database '{db_name}' already exists.")
     except Exception as e:
-        print(f"Warning: Could not verify/create database: {str(e)}")
+        print(f"Local database check notice: {str(e)}")
 
 
 def seed_db():
-    print("Checking database existence...")
+    force = "--force" in sys.argv
+    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/smarthostel")
+    
+    # Mask password for safe logging
+    safe_url = db_url
+    if "@" in db_url:
+        parts = db_url.split("@")
+        user_part = parts[0].split(":")
+        safe_url = f"{user_part[0]}:***@{parts[1]}"
+    print(f"Connecting to database target: {safe_url}")
+    
     create_database_if_not_exists()
     
-    print("Connecting to database and re-initializing schema...")
+    # Safety Check: Check if tables already exist
+    with engine.connect() as conn:
+        table_count = conn.execute(text(
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';"
+        )).scalar()
+        
+    if table_count > 0 and not force:
+        print(f"\n[NOTICE] Database already contains {table_count} tables.")
+        print("To protect existing data from being overwritten, seeding was skipped.")
+        print("To explicitly re-initialize and seed, run:")
+        print("  python seed.py --force\n")
+        return
+
+    print("Initializing database schema, tables, triggers, and stored procedures...")
     
-    # 1. Read and run schema.sql to clear/create everything
+    # 1. Read and run schema.sql
     schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
     if not os.path.exists(schema_path):
         print(f"Error: schema.sql not found at {schema_path}")
@@ -65,7 +86,7 @@ def seed_db():
         conn.execution_options(isolation_level="AUTOCOMMIT")
         conn.execute(text(schema_sql))
     
-    print("Database schema successfully re-initialized!")
+    print("Database schema successfully initialized!")
     
     db = SessionLocal()
     try:

@@ -70,5 +70,8 @@ if __name__ == "__main__":
     local_url = os.getenv("DATABASE_URL")
     check_db(local_url, "LOCAL POSTGRESQL (localhost:5432/smarthostel)")
 
-    azure_url = "postgresql://dbadmin:Nark%401231@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require"
-    check_db(azure_url, "AZURE POSTGRESQL (dbhostel.postgres.database.azure.com)")
+    azure_url = os.getenv("AZURE_DATABASE_URL", "postgresql://dbadmin:<your_password>@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require")
+    if "<your_password>" not in azure_url:
+        check_db(azure_url, "AZURE POSTGRESQL (dbhostel.postgres.database.azure.com)")
+    else:
+        print("\n[INFO] AZURE_DATABASE_URL not configured. Skipping Azure check.")

@@ -99,8 +99,8 @@ if (-not $appJson) {
 }
 
 Write-Host "  -> Configuring Web App environment settings..." -ForegroundColor Gray
-$dbUrl = "postgresql://dbadmin:Nark%401231@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require"
-$jwtSecret = "supersecretkey_smarthostel_dbms_project_2026"
+$dbUrl = if ($env:AZURE_DATABASE_URL) { $env:AZURE_DATABASE_URL } else { "postgresql://dbadmin:<your_password>@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require" }
+$jwtSecret = if ($env:JWT_SECRET) { $env:JWT_SECRET } else { "supersecretkey_smarthostel_dbms_project_2026" }
 
 az webapp config appsettings set --resource-group $ResourceGroup --name $AppServiceName --settings `
     "DATABASE_URL=$dbUrl" `

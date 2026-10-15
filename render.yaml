@@ -1,6 +1,6 @@
 services:
   # ==============================================================================
-  # FastAPI Python Backend
+  # FastAPI Python Backend (Render Web Service)
   # ==============================================================================
   - type: web
     name: smarthostel-api
@@ -10,19 +10,19 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: smarthostel-db
           property: connectionString
       - key: JWT_SECRET
-        value: supersecretkey_smarthostel_dbms_project_2026
+        generateValue: true
       - key: ALLOWED_ORIGINS
-        value: "*"
+        value: "https://smarthostel-frontend.onrender.com,http://localhost:5173"
 
   # ==============================================================================
-  # React Vite Frontend (Static Site)
+  # React Vite Frontend (Render Static Site)
   # ==============================================================================
   - type: web
     name: smarthostel-frontend
@@ -36,12 +36,14 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      - key: VITE_API_BASE_URL
+        value: https://smarthostel-api.onrender.com/api
       - key: VITE_API_URL
         value: https://smarthostel-api.onrender.com/api
 
 databases:
   # ==============================================================================
-  # Free PostgreSQL Database
+  # Managed PostgreSQL Database (Render PostgreSQL)
   # ==============================================================================
   - name: smarthostel-db
     databaseName: smarthostel

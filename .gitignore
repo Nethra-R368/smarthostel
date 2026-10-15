@@ -13,15 +13,22 @@ dist/
 dist-ssr/
 *.local
 
-# Environment variables
+# Environment variables & Secrets
 .env
+.env.*
+!.env.example
 backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
 # IDE / System
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+~$*
 
 # Database local storage
 db_data/

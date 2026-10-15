@@ -25,12 +25,12 @@ STEP 3: UPDATE YOUR ENV CONFIGURATIONS
 Copy the connection string below and paste it into your local project files:
 
 1. Open the file named `.env` in the project root folder.
-2. Replace the active `DATABASE_URL` line (usually line 3) with this exact line:
-DATABASE_URL=postgresql://dbadmin:Nark%401231@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require
+2. Replace the active `DATABASE_URL` line (usually line 3) with this line (replace with your password):
+DATABASE_URL=postgresql://dbadmin:<your_password>@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require
 
 3. Open the file named `.env` inside the `backend` folder.
 4. Replace the `DATABASE_URL` line with the exact same line:
-DATABASE_URL=postgresql://dbadmin:Nark%401231@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require
+DATABASE_URL=postgresql://dbadmin:<your_password>@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require
 
 5. Save both files.
 
