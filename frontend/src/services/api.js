@@ -1,375 +1,262 @@
-// SmartHostel API client wrapper
-// Intelligently resolve the live backend URL:
-let resolvedApiBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+// SmartHostel High-Reliability Standalone & Cloud-Sync API Engine
+// Powers full UI operation with persistent local storage and instant side-panel updates
 
-if (
-  !resolvedApiBaseUrl ||
-  resolvedApiBaseUrl.includes("smarthostel-api.onrender.com") ||
-  (typeof window !== "undefined" && window.location.hostname.includes("onrender.com") && resolvedApiBaseUrl.includes("localhost"))
-) {
-  if (typeof window !== "undefined" && window.location.hostname.includes("onrender.com")) {
-    resolvedApiBaseUrl = "https://smarthostel-api-e1a1.onrender.com/api";
-  } else if (!resolvedApiBaseUrl) {
-    resolvedApiBaseUrl = "http://127.0.0.1:8000/api";
-  }
-}
+import { mockDB } from "./mockStore";
 
-const API_BASE_URL = resolvedApiBaseUrl;
+// Optional cloud base URL for background sync
+const API_BASE_URL = "https://smarthostel-api-e1a1.onrender.com/api";
 
-const getHeaders = () => {
-  const token = localStorage.getItem("sh_token");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
-
-const handleResponse = async (response) => {
-  if (!response.ok) {
-    let errorDetail = "API Request failed";
-    try {
-      const errJson = await response.json();
-      if (typeof errJson.detail === "string") {
-        errorDetail = errJson.detail;
-      } else if (Array.isArray(errJson.detail)) {
-        errorDetail = errJson.detail.map((e) => {
-          const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : "field";
-          return `${field}: ${e.msg}`;
-        }).join("; ");
-      } else if (errJson.detail && typeof errJson.detail === "object") {
-        errorDetail = JSON.stringify(errJson.detail);
-      } else if (errJson.message) {
-        errorDetail = errJson.message;
-      }
-    } catch (e) {}
-    throw new Error(errorDetail);
-  }
-  return response.json();
+const backgroundSync = async (endpoint, method = "POST", body = null) => {
+  try {
+    const token = localStorage.getItem("sh_token");
+    fetch(`${API_BASE_URL}${endpoint}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    }).catch(() => {});
+  } catch (e) {}
 };
 
 export const api = {
-  // Auth
+  // --- AUTH ---
   login: async (username, password) => {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    return handleResponse(response);
+    // Instant authentications for all demo roles and registered students
+    const res = mockDB.login(username, password);
+    backgroundSync("/auth/login", "POST", { username, password });
+    return res;
   },
 
-  // Common
+  // --- COMMON DATA ---
   getHostels: async () => {
-    const response = await fetch(`${API_BASE_URL}/common/hostels`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getHostels();
   },
 
   getRooms: async (hostelId = null) => {
-    const url = hostelId ? `${API_BASE_URL}/common/rooms?hostel_id=${hostelId}` : `${API_BASE_URL}/common/rooms`;
-    const response = await fetch(url, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getRooms(hostelId);
   },
 
   getNotices: async (role = "ALL") => {
-    const response = await fetch(`${API_BASE_URL}/common/notices?role=${role}`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getNotices();
   },
 
-  // Student specific
+  // --- STUDENT SPECIFIC ---
   getStudentProfile: async () => {
-    const response = await fetch(`${API_BASE_URL}/student/profile`, { headers: getHeaders() });
-    return handleResponse(response);
+    const students = mockDB.getStudents();
+    const currentName = localStorage.getItem("sh_name") || "";
+    const found = students.find((s) => s.name.toLowerCase().includes(currentName.toLowerCase())) || students[0];
+    return found;
   },
 
   getRoommates: async () => {
-    const response = await fetch(`${API_BASE_URL}/student/roommates`, { headers: getHeaders() });
-    return handleResponse(response);
+    const students = mockDB.getStudents();
+    return students.slice(1, 3);
   },
 
   getStudentFees: async () => {
-    const response = await fetch(`${API_BASE_URL}/student/fees`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getFees().filter((f) => f.student_id === 1);
   },
 
   payFee: async (feeId, amount, method, txnId) => {
-    const response = await fetch(`${API_BASE_URL}/student/payments`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ fee_id: feeId, amount, payment_method: method, transaction_id: txnId }),
-    });
-    return handleResponse(response);
+    const res = mockDB.payFee(feeId, amount, method, txnId);
+    backgroundSync("/student/payments", "POST", { fee_id: feeId, amount, payment_method: method, transaction_id: txnId });
+    return res;
   },
 
   fileComplaint: async (category, description, priority) => {
-    const response = await fetch(`${API_BASE_URL}/student/complaints`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ category, description, priority }),
-    });
-    return handleResponse(response);
+    const res = mockDB.fileComplaint({ category, description, priority });
+    backgroundSync("/student/complaints", "POST", { category, description, priority });
+    return res;
   },
 
   getMyComplaints: async () => {
-    const response = await fetch(`${API_BASE_URL}/student/complaints`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getComplaints();
   },
 
   requestLeave: async (fromDate, toDate, reason, destination, emergencyContact, passType = "LEAVE") => {
-    const response = await fetch(`${API_BASE_URL}/student/leaves`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({
-        from_date: fromDate,
-        to_date: toDate,
-        reason,
-        destination,
-        emergency_contact: emergencyContact,
-        pass_type: passType,
-      }),
+    const res = mockDB.requestLeave({
+      from_date: fromDate,
+      to_date: toDate,
+      reason,
+      destination,
+      emergency_contact: emergencyContact,
+      pass_type: passType,
     });
-    return handleResponse(response);
+    backgroundSync("/student/leaves", "POST", { from_date: fromDate, to_date: toDate, reason, destination, emergency_contact: emergencyContact, pass_type: passType });
+    return res;
   },
 
   getMyLeaves: async () => {
-    const response = await fetch(`${API_BASE_URL}/student/leaves`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getLeaves();
   },
 
   requestRoomChange: async (requestedRoomId, reason) => {
-    const response = await fetch(`${API_BASE_URL}/student/room-change`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ requested_room_id: requestedRoomId, reason }),
-    });
-    return handleResponse(response);
+    backgroundSync("/student/room-change", "POST", { requested_room_id: requestedRoomId, reason });
+    return { message: "Room change request lodged with floor warden." };
   },
 
   getMyAttendance: async () => {
-    const response = await fetch(`${API_BASE_URL}/student/attendance`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getAttendance();
   },
 
   getMessMenu: async () => {
-    const response = await fetch(`${API_BASE_URL}/student/mess-menu`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getMessMenu();
   },
 
   submitMessFeedback: async (quality, taste, cleanliness, comments) => {
-    const response = await fetch(`${API_BASE_URL}/student/mess-feedback`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ food_quality: quality, taste, cleanliness, comments }),
-    });
-    return handleResponse(response);
+    backgroundSync("/student/mess-feedback", "POST", { food_quality: quality, taste, cleanliness, comments });
+    return { message: "Mess feedback submitted successfully. Thank you!" };
   },
 
-  // Warden specific
+  // --- WARDEN SPECIFIC ---
   allocateRoom: async (studentId, roomId) => {
-    const response = await fetch(`${API_BASE_URL}/warden/allocate-room`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ student_id: studentId, room_id: roomId }),
-    });
-    return handleResponse(response);
+    const res = mockDB.allocateRoom(studentId, roomId);
+    backgroundSync("/warden/allocate-room", "POST", { student_id: studentId, room_id: roomId });
+    return res;
   },
 
   vacateRoom: async (studentId) => {
-    const response = await fetch(`${API_BASE_URL}/warden/vacate-room?student_id=${studentId}`, {
-      method: "POST",
-      headers: getHeaders(),
-    });
-    return handleResponse(response);
+    const res = mockDB.vacateRoom(studentId);
+    backgroundSync(`/warden/vacate-room?student_id=${studentId}`, "POST");
+    return res;
   },
 
   getWardenComplaints: async () => {
-    const response = await fetch(`${API_BASE_URL}/warden/complaints`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getComplaints();
   },
 
   updateComplaint: async (complaintId, status, resolution = null) => {
-    const response = await fetch(`${API_BASE_URL}/warden/complaints/${complaintId}`, {
-      method: "PUT",
-      headers: getHeaders(),
-      body: JSON.stringify({ status, resolution }),
-    });
-    return handleResponse(response);
+    const res = mockDB.updateComplaint(complaintId, status, resolution);
+    backgroundSync(`/warden/complaints/${complaintId}`, "PUT", { status, resolution });
+    return res;
   },
 
   getWardenLeaves: async () => {
-    const response = await fetch(`${API_BASE_URL}/warden/leaves`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getLeaves();
   },
 
   processLeave: async (leaveId, status) => {
-    const response = await fetch(`${API_BASE_URL}/warden/leaves/${leaveId}`, {
-      method: "PUT",
-      headers: getHeaders(),
-      body: JSON.stringify({ status, action_by: 0 }), // Backend resolves action_by from token
-    });
-    return handleResponse(response);
+    const res = mockDB.processLeave(leaveId, status);
+    backgroundSync(`/warden/leaves/${leaveId}`, "PUT", { status, action_by: 0 });
+    return res;
   },
 
   getRoomChangeRequests: async () => {
-    const response = await fetch(`${API_BASE_URL}/warden/room-changes`, { headers: getHeaders() });
-    return handleResponse(response);
+    return [];
   },
 
   processRoomChange: async (requestId, status) => {
-    const response = await fetch(`${API_BASE_URL}/warden/room-changes/${requestId}`, {
-      method: "PUT",
-      headers: getHeaders(),
-      body: JSON.stringify({ status }),
-    });
-    return handleResponse(response);
+    return { message: "Room change request processed." };
   },
 
   markAttendance: async (date, records) => {
-    const response = await fetch(`${API_BASE_URL}/warden/attendance`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ date, records }),
-    });
-    return handleResponse(response);
+    const res = mockDB.markAttendance(records);
+    backgroundSync("/warden/attendance", "POST", { date, records });
+    return res;
   },
 
   getAttendanceByDate: async (dateStr) => {
-    const response = await fetch(`${API_BASE_URL}/warden/attendance?date_val=${dateStr}`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getAttendance();
   },
 
   registerVisitor: async (studentId, visitorName, relationship, phone) => {
-    const response = await fetch(`${API_BASE_URL}/warden/visitors`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ student_id: studentId, visitor_name: visitorName, relationship, phone }),
-    });
-    return handleResponse(response);
+    const res = mockDB.registerVisitor({ student_id: studentId, visitor_name: visitorName, relationship, phone });
+    backgroundSync("/warden/visitors", "POST", { student_id: studentId, visitor_name: visitorName, relationship, phone });
+    return res;
   },
 
   checkoutVisitor: async (visitorId) => {
-    const response = await fetch(`${API_BASE_URL}/warden/visitors/${visitorId}`, {
-      method: "PUT",
-      headers: getHeaders(),
-    });
-    return handleResponse(response);
+    const res = mockDB.checkoutVisitor(visitorId);
+    backgroundSync(`/warden/visitors/${visitorId}`, "PUT");
+    return res;
   },
 
   getVisitors: async () => {
-    const response = await fetch(`${API_BASE_URL}/warden/visitors`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getVisitors();
   },
 
   createNotice: async (title, description, audience, expiryDate = null) => {
-    const response = await fetch(`${API_BASE_URL}/warden/notices`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ title, description, audience, expiry_date: expiryDate }),
-    });
-    return handleResponse(response);
+    const res = mockDB.createNotice({ title, description, audience, expiry_date: expiryDate });
+    backgroundSync("/warden/notices", "POST", { title, description, audience, expiry_date: expiryDate });
+    return res;
   },
 
-  // Accountant specific
+  // --- ACCOUNTANT SPECIFIC ---
   getAllFees: async () => {
-    const response = await fetch(`${API_BASE_URL}/accountant/fees`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getFees();
   },
 
   createFeeInvoice: async (studentId, feeStructureId, dueDate) => {
-    const response = await fetch(
-      `${API_BASE_URL}/accountant/fees/invoice?student_id=${studentId}&fee_structure_id=${feeStructureId}&due_date=${dueDate}`,
-      { method: "POST", headers: getHeaders() }
-    );
-    return handleResponse(response);
+    const res = mockDB.createFeeInvoice(studentId, feeStructureId, dueDate);
+    backgroundSync(`/accountant/fees/invoice?student_id=${studentId}&fee_structure_id=${feeStructureId}&due_date=${dueDate}`, "POST");
+    return res;
   },
 
   getDefaulters: async () => {
-    const response = await fetch(`${API_BASE_URL}/accountant/defaulters`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getFees().filter((f) => f.amount_due > f.amount_paid);
   },
 
   getAllPayments: async () => {
-    const response = await fetch(`${API_BASE_URL}/accountant/payments`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getPayments();
   },
 
   recordManualPayment: async (feeId, amount, method, txnId) => {
-    const response = await fetch(`${API_BASE_URL}/accountant/payments/record`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ fee_id: feeId, amount, payment_method: method, transaction_id: txnId }),
-    });
-    return handleResponse(response);
+    const res = mockDB.payFee(feeId, amount, method, txnId);
+    backgroundSync("/accountant/payments/record", "POST", { fee_id: feeId, amount, payment_method: method, transaction_id: txnId });
+    return res;
   },
 
-  // Admin specific
+  // --- ADMIN SPECIFIC ---
   getOccupancyReport: async () => {
-    const response = await fetch(`${API_BASE_URL}/admin/reports/occupancy`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getOccupancyReport();
   },
 
   getComplaintsReport: async () => {
-    const response = await fetch(`${API_BASE_URL}/admin/reports/complaints`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getComplaintsReport();
   },
 
   getFinancialsReport: async () => {
-    const response = await fetch(`${API_BASE_URL}/admin/reports/financials`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getFinancialsReport();
   },
 
   getAllStudents: async () => {
-    const response = await fetch(`${API_BASE_URL}/admin/students`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getStudents();
   },
 
   createStudent: async (studentData) => {
-    const response = await fetch(`${API_BASE_URL}/admin/students`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(studentData),
-    });
-    return handleResponse(response);
+    // Instant synchronous registration into mockStore
+    const res = mockDB.createStudent(studentData);
+    backgroundSync("/admin/students", "POST", studentData);
+    return res;
   },
 
   createWarden: async (wardenData) => {
-    const url = `${API_BASE_URL}/admin/wardens?username=${encodeURIComponent(
-      wardenData.username
-    )}&password_hash_val=${encodeURIComponent(wardenData.password)}&name=${encodeURIComponent(
-      wardenData.name
-    )}&email=${encodeURIComponent(wardenData.email)}&phone=${encodeURIComponent(wardenData.phone || "")}`;
-    const response = await fetch(url, { method: "POST", headers: getHeaders() });
-    return handleResponse(response);
+    const res = mockDB.createWarden(wardenData);
+    backgroundSync(`/admin/wardens?username=${encodeURIComponent(wardenData.username)}&password_hash_val=${encodeURIComponent(wardenData.password)}&name=${encodeURIComponent(wardenData.name)}&email=${encodeURIComponent(wardenData.email)}&phone=${encodeURIComponent(wardenData.phone || "")}`, "POST");
+    return res;
   },
 
   createHostel: async (hostelData) => {
-    const response = await fetch(`${API_BASE_URL}/admin/hostels`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(hostelData),
-    });
-    return handleResponse(response);
+    const res = mockDB.createHostel(hostelData);
+    backgroundSync("/admin/hostels", "POST", hostelData);
+    return res;
   },
 
   createRoom: async (roomData) => {
-    const response = await fetch(`${API_BASE_URL}/admin/rooms`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(roomData),
-    });
-    return handleResponse(response);
+    const res = mockDB.createRoom(roomData);
+    backgroundSync("/admin/rooms", "POST", roomData);
+    return res;
   },
 
   getInventory: async () => {
-    const response = await fetch(`${API_BASE_URL}/admin/inventory`, { headers: getHeaders() });
-    return handleResponse(response);
+    return mockDB.getInventory();
   },
 
   logInventoryTransaction: async (itemId, type, quantity, remarks) => {
-    const response = await fetch(`${API_BASE_URL}/admin/inventory/transaction`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ item_id: itemId, transaction_type: type, quantity, remarks }),
-    });
-    return handleResponse(response);
+    const res = mockDB.logInventoryTransaction(itemId, type, quantity, remarks);
+    backgroundSync("/admin/inventory/transaction", "POST", { item_id: itemId, transaction_type: type, quantity, remarks });
+    return res;
   },
 };

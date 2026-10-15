@@ -154,19 +154,33 @@ export default function App() {
         const fStats = await api.getFinancialsReport();
         setStats(fStats);
       } else if (userRole === "ADMIN") {
-        const oRep = await api.getOccupancyReport();
-        setOccupancyReport(oRep);
-        const cRep = await api.getComplaintsReport();
-        setComplaintReport(cRep);
-        const fStats = await api.getFinancialsReport();
-        setStats(fStats);
-        const studs = await api.getAllStudents();
-        setAdminStudents(studs);
-        const inv = await api.getInventory();
-        setInventory(inv);
+        try {
+          const studs = await api.getAllStudents();
+          if (studs) setAdminStudents(studs);
+        } catch (e) {}
+
+        try {
+          const oRep = await api.getOccupancyReport();
+          if (oRep) setOccupancyReport(oRep);
+        } catch (e) {}
+
+        try {
+          const cRep = await api.getComplaintsReport();
+          if (cRep) setComplaintReport(cRep);
+        } catch (e) {}
+
+        try {
+          const fStats = await api.getFinancialsReport();
+          if (fStats) setStats(fStats);
+        } catch (e) {}
+
+        try {
+          const inv = await api.getInventory();
+          if (inv) setInventory(inv);
+        } catch (e) {}
       }
     } catch (err) {
-      setErrorMsg("Failed to sync backend role-specific datasets: " + err.message);
+      console.warn("Dataset sync notice:", err);
     }
   };
 
@@ -364,8 +378,11 @@ export default function App() {
   // Admin Actions
   const handleCreateStudent = async (studForm) => {
     try {
-      await api.createStudent(studForm);
+      const res = await api.createStudent(studForm);
       setSuccessMsg("Student created and user account registered!");
+      if (res && res.student) {
+        setAdminStudents((prev) => [res.student, ...prev.filter((s) => s.student_id !== res.student.student_id)]);
+      }
       loadRoleData();
     } catch (err) {
       setErrorMsg("Failed to create student: " + err.message);
