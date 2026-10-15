@@ -1,0 +1,68 @@
+=== INSTRUCTIONS FOR CONNECTING TO THE SHARED DATABASE ===
+
+To run the SmartHostel project and connect to our shared cloud database, please follow these steps:
+
+---------------------------------------------------------
+STEP 1: GET A VPN (IF ON CAMPUS WI-FI)
+---------------------------------------------------------
+If you are on the university Wi-Fi network (Amrita), database ports are blocked.
+1. Download and install the free VPN: Cloudflare WARP (from https://1.1.1.1/).
+2. Turn the VPN ON.
+*(Note: If you are on your home network or mobile hotspot, you might not need a VPN, but if you get a connection timeout error, turn WARP on).*
+
+---------------------------------------------------------
+STEP 2: SEND ME YOUR PUBLIC IP TO WHITELIST
+---------------------------------------------------------
+For security, Azure blocks all incoming connections unless they are whitelisted.
+1. Make sure your VPN is turned ON (if using one).
+2. Open your web browser and go to: https://api.ipify.org
+3. Copy the IP address shown on that screen and send it to me.
+4. I will add it to the Azure Portal firewall so your laptop is allowed to connect.
+
+---------------------------------------------------------
+STEP 3: UPDATE YOUR ENV CONFIGURATIONS
+---------------------------------------------------------
+Copy the connection string below and paste it into your local project files:
+
+1. Open the file named `.env` in the project root folder.
+2. Replace the active `DATABASE_URL` line (usually line 3) with this exact line:
+DATABASE_URL=postgresql://dbadmin:Nark%401231@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require
+
+3. Open the file named `.env` inside the `backend` folder.
+4. Replace the `DATABASE_URL` line with the exact same line:
+DATABASE_URL=postgresql://dbadmin:Nark%401231@dbhostel.postgres.database.azure.com:5432/smarthostel?sslmode=require
+
+5. Save both files.
+
+---------------------------------------------------------
+STEP 4: RUN the APPLICATION
+---------------------------------------------------------
+Once your IP has been whitelisted and your env files are updated:
+1. Open PowerShell in your project folder.
+2. Start the Backend API server:
+   .\start_backend.bat
+3. Start the Frontend User Interface:
+   .\start_frontend.bat
+
+*(Note: Do NOT run `python seed.py`, because running the seeder will delete all tables and reset the shared database for everyone!)*
+
+---------------------------------------------------------
+STEP 5: LOG IN TO THE APP
+---------------------------------------------------------
+Open the web app in your browser (usually http://localhost:5173/) and log in using any of the following accounts:
+
+1. Admin Login:
+   - Username: admin
+   - Password: admin123
+
+2. Student Login:
+   - Username: sahaana
+   - Password: sahaana123
+
+3. Accountant Login:
+   - Username: accountant
+   - Password: acct123
+
+4. Boys Hostel Warden Login:
+   - Username: warden_boys
+   - Password: warden123

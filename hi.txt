@@ -1,0 +1,357 @@
+=============================================================================
+             PROJECT PRESENTATION OUTLINE & TECHNICAL DOCUMENTATION
+  PROJECT: ResiKeep RDBMS - Cloud-Integrated Enterprise Relational Database
+            for Multi-Tenant Student Housing & Facility Operations
+=============================================================================
+
+This document is optimized for a 5th-semester DBMS Project Review presentation.
+It contains the slide-by-slide presentation script, the technical architecture,
+and detailed relational schema definitions.
+
+-----------------------------------------------------------------------------
+SLIDE 1: TITLE SLIDE
+-----------------------------------------------------------------------------
+* Project Title: ResiKeep RDBMS
+* Subtitle: A Cloud-Integrated Enterprise Relational Database for Multi-Tenant 
+            Campus Housing & Facility Operations
+* Presenters: [Your Name / Team Members]
+* Key Focus Areas:
+  - Complex Relational Schema (19 Tables)
+  - Data Integrity & Referential Constraints (Cascades, Restricts, Check Domain constraints)
+  - Server-Side Automation (PL/pgSQL Triggers and Transaction-Safe Stored Procedures)
+  - Relational Algebra Abstraction (Views & Indexed Queries)
+  - Secure Cloud DBaaS Infrastructure
+
+-----------------------------------------------------------------------------
+SLIDE 2: PROBLEM STATEMENT & SYSTEM OBJECTIVES
+-----------------------------------------------------------------------------
+* The Challenge:
+  - Institutional student housing involves multiple disjointed workflows: 
+    room allocation, fee billing, complaint tracking, inventory control, out-passes, 
+    mess menus, and visitor logs.
+  - Using manual logbooks or isolated local spreadsheets leads to redundancy,
+    data inconsistency, lack of transactional safety, and poor multi-user concurrency.
+* System Objectives:
+  - Create a unified, centralized transactional relational database (PostgreSQL).
+  - Implement Role-Based Access Control (RBAC) at the application and schema layers.
+  - Enforce referential integrity to prevent orphaned entries (e.g., student details
+    remaining after account deletion).
+  - Utilize database-level triggers to guarantee real-time synchronization of counters
+    (such as room vacancy capacity) and ledger status.
+  - Provide a high-performance system through optimized database indexing and views.
+
+-----------------------------------------------------------------------------
+SLIDE 3: SYSTEM ARCHITECTURE & DATA FLOW
+-----------------------------------------------------------------------------
+* Technical Stack:
+  - Frontend: Responsive Client UI built using HTML5, Vanilla CSS3 (custom glassmorphism design),
+    and Vanilla JavaScript, optimized via Vite.
+  - Backend: RESTful API powered by Python 3.12 and FastAPI. Pydantic is used for request 
+    validation and data serialization.
+  - ORM Layer: SQLAlchemy is utilized as the Object-Relational Mapper, executing transaction blocks 
+    and mapping PostgreSQL rows to Python objects.
+  - Database System: PostgreSQL 16+ hosted on Azure Database for PostgreSQL Flexible Server (Cloud DBaaS).
+* Client-Server-DB Data Flow:
+  1. Client sends an HTTP request with JWT authentication headers.
+  2. FastAPI Backend interceptor verifies credentials, opens an active database session pool.
+  3. SQL Queries / Stored Procedures are dispatched to PostgreSQL via the Psycopg2 database driver.
+  4. PostgreSQL executes the transaction, fires triggers, updates indexes, and returns the result.
+  5. Connection is returned to the connection pool, and backend sends JSON responses back to the client.
+
+-----------------------------------------------------------------------------
+SLIDE 4: ENTITY-RELATIONSHIP (ER) DESIGN & RELATIONSHIPS
+-----------------------------------------------------------------------------
+* Core Entity Sets:
+  - Users, Students, Wardens, Hostels, Rooms, Fee Structures, Invoices (Student Fees), 
+    Complaints, Leaves, Visitors, Room Change Requests, and Inventory.
+* Primary Relationship Cardinalities:
+  - Hostel to Room (1 : N) - A hostel contains multiple rooms; a room belongs to one hostel.
+  - Student to Room Allocation (1 : N) - A student can have multiple historical allocations, 
+    but only one active room allocation at any time.
+  - Student to Student Fee (1 : N) - A student can have multiple outstanding fee invoices over terms.
+  - Student Fee to Payment (1 : N) - A single fee invoice can have multiple partial payments.
+  - Student to Complaint (1 : N) - A student can file multiple maintenance complaints.
+  - Warden to Complaint (1 : N) - A warden is assigned to manage multiple student complaints.
+  - Inventory to Inventory Transaction (1 : N) - An inventory item logs multiple transactions (Add/Remove).
+* Referential Integrity Mappings:
+  - ON DELETE CASCADE: When a record in the parent table (`users`, `student`, `hostel`, `room`) is deleted,
+    associated dependent records in child tables (`student`, `room_allocation`, `payment`, etc.) are
+    automatically purged to prevent database fragmentation.
+  - ON DELETE SET NULL: Used when deleting a warden; the complaints assigned to them or hostel managed
+    by them will have their reference set to NULL instead of breaking the record.
+  - ON DELETE RESTRICT: Prevents deletion of a parent record if children exist. E.g., a `fee_structure`
+    cannot be deleted if a student is already billed under that structure.
+
+-----------------------------------------------------------------------------
+SLIDE 5: DATA DICTIONARY & SCHEMA OVERVIEW (PART 1 - AUTH & GENERAL)
+-----------------------------------------------------------------------------
+The database consists of 19 normalized tables structured as follows:
+
+1. users (Authentication & RBAC)
+   - user_id (INT, PK, SERIAL)
+   - username (VARCHAR(50), UNIQUE, NOT NULL)
+   - password_hash (VARCHAR(255), NOT NULL)
+   - role (VARCHAR(20), CHECK role IN ('ADMIN', 'WARDEN', 'STUDENT', 'ACCOUNTANT'))
+   - created_at (TIMESTAMP, DEFAULT current)
+
+2. warden (Staff Details)
+   - warden_id (INT, PK, SERIAL)
+   - user_id (INT, FK -> users(user_id) ON DELETE CASCADE)
+   - name (VARCHAR(100), NOT NULL)
+   - email (VARCHAR(100), UNIQUE, NOT NULL)
+   - phone (VARCHAR(15))
+
+3. hostel (Building Configuration)
+   - hostel_id (INT, PK, SERIAL)
+   - hostel_name (VARCHAR(100), UNIQUE, NOT NULL)
+   - hostel_type (VARCHAR(20), CHECK hostel_type IN ('BOYS', 'GIRLS', 'COED'))
+   - capacity (INT, NOT NULL)
+   - warden_id (INT, FK -> warden(warden_id) ON DELETE SET NULL)
+
+4. room (Room Slots)
+   - room_id (INT, PK, SERIAL)
+   - hostel_id (INT, FK -> hostel(hostel_id) ON DELETE CASCADE)
+   - room_number (VARCHAR(20), NOT NULL)
+   - floor (INT, NOT NULL)
+   - room_type (VARCHAR(30), CHECK room_type IN ('SINGLE', 'DOUBLE', 'TRIPLE', 'COMMON'))
+   - capacity (INT, NOT NULL)
+   - occupied_count (INT, DEFAULT 0, CHECK occupied_count <= capacity)
+   - status (VARCHAR(20), DEFAULT 'AVAILABLE', CHECK status IN ('AVAILABLE', 'FULL', 'MAINTENANCE'))
+   * Composite Unique Constraint: UNIQUE(hostel_id, room_number)
+
+5. student (Student Enrolment)
+   - student_id (INT, PK, SERIAL)
+   - user_id (INT, FK -> users(user_id) ON DELETE CASCADE)
+   - roll_no (VARCHAR(20), UNIQUE, NOT NULL)
+   - name (VARCHAR(100), NOT NULL)
+   - email (VARCHAR(100), UNIQUE, NOT NULL)
+   - phone (VARCHAR(15))
+   - department (VARCHAR(100))
+   - year (INT)
+   - gender (VARCHAR(20))
+   - date_of_birth (DATE)
+   - status (VARCHAR(20), DEFAULT 'ACTIVE', CHECK status IN ('ACTIVE', 'GRADUATED', 'SUSPENDED', 'LEFT'))
+
+6. room_allocation (Room Assignments)
+   - allocation_id (INT, PK, SERIAL)
+   - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+   - room_id (INT, FK -> room(room_id) ON DELETE CASCADE)
+   - allocation_date (DATE, DEFAULT current)
+   - vacated_date (DATE)
+   - status (VARCHAR(20), CHECK status IN ('ACTIVE', 'COMPLETED', 'CANCELLED'))
+
+-----------------------------------------------------------------------------
+SLIDE 6: DATA DICTIONARY & SCHEMA OVERVIEW (PART 2 - FINANCE & OPERATIONS)
+-----------------------------------------------------------------------------
+7. fee_structure (Base Fee Configuration)
+   - fee_structure_id (INT, PK, SERIAL)
+   - room_type (VARCHAR(30), UNIQUE, NOT NULL)
+   - academic_fee (NUMERIC(10,2), NOT NULL)
+   - mess_fee (NUMERIC(10,2), NOT NULL)
+   - caution_deposit (NUMERIC(10,2), NOT NULL)
+
+8. student_fee (Outstanding Invoices)
+   - fee_id (INT, PK, SERIAL)
+   - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+   - fee_structure_id (INT, FK -> fee_structure(fee_structure_id) ON DELETE RESTRICT)
+   - amount_due (NUMERIC(10,2), NOT NULL)
+   - amount_paid (NUMERIC(10,2), DEFAULT 0.00)
+   - due_date (DATE, NOT NULL)
+   - status (VARCHAR(20), DEFAULT 'PENDING', CHECK status IN ('PENDING', 'PARTIAL', 'PAID'))
+
+9. payment (Transaction Ledgers)
+   - payment_id (INT, PK, SERIAL)
+   - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+   - fee_id (INT, FK -> student_fee(fee_id) ON DELETE CASCADE)
+   - amount (NUMERIC(10,2), NOT NULL, CHECK amount > 0)
+   - payment_date (TIMESTAMP, DEFAULT current)
+   - payment_method (VARCHAR(30), CHECK payment_method IN ('UPI', 'CARD', 'NET_BANKING', 'CASH'))
+   - transaction_id (VARCHAR(100), UNIQUE, NOT NULL)
+   - status (VARCHAR(20), DEFAULT 'SUCCESS', CHECK status IN ('SUCCESS', 'PENDING', 'FAILED'))
+
+10. complaint (Issue Log)
+    - complaint_id (INT, PK, SERIAL)
+    - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+    - category (VARCHAR(30), CHECK category IN ('ELECTRICAL', 'PLUMBING', 'WIFI', 'CLEANING', 'FURNITURE', 'FOOD', 'SECURITY', 'OTHER'))
+    - description (TEXT, NOT NULL)
+    - priority (VARCHAR(20), DEFAULT 'MEDIUM', CHECK priority IN ('LOW', 'MEDIUM', 'HIGH'))
+    - assigned_to (INT, FK -> warden(warden_id) ON DELETE SET NULL)
+    - status (VARCHAR(20), DEFAULT 'NEW', CHECK status IN ('NEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'))
+    - resolved_at (TIMESTAMP)
+    - resolution (TEXT)
+
+11. visitor (Log of Visitors)
+    - visitor_id (INT, PK, SERIAL)
+    - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+    - visitor_name (VARCHAR(100), NOT NULL)
+    - relationship (VARCHAR(50), NOT NULL)
+    - phone (VARCHAR(15))
+    - entry_time (TIMESTAMP, DEFAULT current)
+    - exit_time (TIMESTAMP)
+    - approved_by (INT, FK -> warden(warden_id) ON DELETE SET NULL)
+    - status (VARCHAR(20), DEFAULT 'APPROVED', CHECK status IN ('APPROVED', 'CHECKED_OUT', 'DENIED'))
+
+12. leave_request (Leave/Pass Logging)
+    - leave_id (INT, PK, SERIAL)
+    - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+    - pass_type (VARCHAR(20), CHECK pass_type IN ('LEAVE', 'HOME_PASS', 'OUT_PASS'))
+    - from_date (DATE, NOT NULL)
+    - to_date (DATE, NOT NULL)
+    - reason (TEXT, NOT NULL)
+    - destination (TEXT, NOT NULL)
+    - emergency_contact (VARCHAR(15), NOT NULL)
+    - status (VARCHAR(20), DEFAULT 'PENDING', CHECK status IN ('PENDING', 'APPROVED', 'REJECTED'))
+    - action_by (INT, FK -> warden(warden_id) ON DELETE SET NULL)
+    - action_date (TIMESTAMP)
+
+-----------------------------------------------------------------------------
+SLIDE 7: DATA DICTIONARY & SCHEMA OVERVIEW (PART 3 - ROOM TRANSITIONS & UTILITIES)
+-----------------------------------------------------------------------------
+13. room_change_request (Internal Transitions)
+    - request_id (INT, PK, SERIAL)
+    - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+    - current_room_id (INT, FK -> room(room_id) ON DELETE CASCADE)
+    - requested_room_id (INT, FK -> room(room_id) ON DELETE CASCADE)
+    - reason (TEXT, NOT NULL)
+    - status (VARCHAR(20), DEFAULT 'PENDING', CHECK status IN ('PENDING', 'APPROVED', 'REJECTED'))
+    - action_by (INT, FK -> warden(warden_id) ON DELETE SET NULL)
+    - action_date (TIMESTAMP)
+
+14. attendance (Daily Attendance Registry)
+    - attendance_id (INT, PK, SERIAL)
+    - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+    - date (DATE, DEFAULT current)
+    - status (VARCHAR(20), CHECK status IN ('PRESENT', 'ABSENT', 'LEAVE'))
+    - marked_by (INT, FK -> warden(warden_id) ON DELETE SET NULL)
+    * Composite Unique Constraint: UNIQUE(student_id, date)
+
+15. notice (Communication Bulletin)
+    - notice_id (INT, PK, SERIAL)
+    - title (VARCHAR(200), NOT NULL)
+    - description (TEXT, NOT NULL)
+    - audience (VARCHAR(30), CHECK audience IN ('ALL', 'STUDENTS', 'WARDENS', 'STAFF'))
+    - expiry_date (DATE)
+    - created_by (INT, FK -> users(user_id) ON DELETE SET NULL)
+
+16. inventory (Assets Inventory Ledger)
+    - item_id (INT, PK, SERIAL)
+    - hostel_id (INT, FK -> hostel(hostel_id) ON DELETE CASCADE)
+    - item_name (VARCHAR(100), NOT NULL)
+    - total_qty (INT, CHECK total_qty >= 0)
+    - occupied_qty (INT, DEFAULT 0, CHECK occupied_qty <= total_qty)
+    - damaged_qty (INT, DEFAULT 0, CHECK damaged_qty <= total_qty)
+
+17. inventory_transaction (Audit Trail)
+    - transaction_id (INT, PK, SERIAL)
+    - item_id (INT, FK -> inventory(item_id) ON DELETE CASCADE)
+    - transaction_type (VARCHAR(20), CHECK transaction_type IN ('ADD', 'REMOVE', 'DAMAGE_REPORT', 'REPAIR_REPORT'))
+    - quantity (INT, CHECK quantity > 0)
+    - remarks (TEXT)
+
+18. mess_menu (Dietary Records)
+    - menu_id (INT, PK, SERIAL)
+    - hostel_id (INT, FK -> hostel(hostel_id) ON DELETE CASCADE)
+    - day_of_week (VARCHAR(15), CHECK day_of_week IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'))
+    - breakfast (TEXT, NOT NULL)
+    - lunch (TEXT, NOT NULL)
+    - dinner (TEXT, NOT NULL)
+    * Composite Unique Constraint: UNIQUE(hostel_id, day_of_week)
+
+19. mess_feedback (Satisfaction Quality Logs)
+    - feedback_id (INT, PK, SERIAL)
+    - student_id (INT, FK -> student(student_id) ON DELETE CASCADE)
+    - date (DATE, DEFAULT current)
+    - food_quality (INT, CHECK food_quality BETWEEN 1 AND 5)
+    - taste (INT, CHECK taste BETWEEN 1 AND 5)
+    - cleanliness (INT, CHECK cleanliness BETWEEN 1 AND 5)
+    - comments (TEXT)
+
+-----------------------------------------------------------------------------
+SLIDE 8: DATA ABSTRACTION: DATABASE VIEWS
+-----------------------------------------------------------------------------
+To simplify complex query execution for the application tier, four optimized views are defined:
+
+1. available_rooms:
+   - Purpose: Lists all rooms that are open for new allocations.
+   - Logic: Performs an Inner Join of `room` and `hostel`, filtering out rooms where status != 'AVAILABLE'
+     or where occupied_count has reached its capacity limit.
+
+2. hostel_occupancy:
+   - Purpose: Computes hostel building utilization metrics.
+   - Logic: Aggregates room capacity and occupancy across hostels using a Left Join, and performs 
+     real-time percentage calculations (with division-by-zero protection via COALESCE).
+
+3. pending_fees (Defaulters list):
+   - Purpose: Identifies students with unpaid invoices.
+   - Logic: Joins `student` and `student_fee`, computing (amount_due - amount_paid) and filtering rows 
+     where the balance outstanding is greater than 0.
+
+4. complaint_summary:
+   - Purpose: High-level analytics of infrastructure tickets.
+   - Logic: Performs a GROUP BY aggregate count of ticket rows categorized by priority, classification, 
+     and status.
+
+-----------------------------------------------------------------------------
+SLIDE 9: QUERY PERFORMANCE & INDEXING STRATEGY
+-----------------------------------------------------------------------------
+To prevent slow sequential tables scans on millions of transactions, key indexes were placed:
+
+* idx_student_rollno: B-Tree Index on `student(roll_no)`. Speeds up student verification during login
+  and check-in.
+* idx_room_hostel: Index on `room(hostel_id)`. Optimizes Room list lookup operations for specific blocks.
+* idx_room_status: Index on `room(status)`. Accelerates search queries looking for vacant rooms.
+* idx_allocation_student: Partial Index on `room_allocation(student_id) WHERE status = 'ACTIVE'`.
+  Drastically reduces lookup times when searching for a student's currently active room allocation.
+* idx_payment_student & idx_attendance_date: Speeds up financial ledger queries and attendance reports.
+
+-----------------------------------------------------------------------------
+SLIDE 10: TRIGGER-BASED AUTOMATION (SERVER-SIDE INTELLIGENCE)
+-----------------------------------------------------------------------------
+Data consistency is enforced at the database layer using PL/pgSQL database triggers:
+
+1. Room Occupancy Sync (`trg_update_room_occupancy`):
+   - Trigger Event: AFTER INSERT, UPDATE, or DELETE on `room_allocation`.
+   - Logic: Automatically increments `occupied_count` in the `room` table for new active assignments,
+     decrements it when a student vacates, and shifts the room's status domain between 'FULL' and
+     'AVAILABLE' dynamically based on capacity checks.
+
+2. Automated Invoice Ledger Updates (`trg_update_payment_status`):
+   - Trigger Event: AFTER INSERT or UPDATE on `payment`.
+   - Logic: When a successful payment transaction occurs, this trigger automatically aggregates all 
+     historic successful payments for the invoice, updates the total `amount_paid` inside `student_fee`,
+     and moves the status state machine ('PAID', 'PARTIAL', or 'PENDING') accordingly.
+
+3. Complaint Resolution Clock (`trg_complaint_resolution`):
+   - Trigger Event: BEFORE UPDATE on `complaint`.
+   - Logic: Automatically marks the `resolved_at` timestamp with the database current time if the status
+     transitions to 'RESOLVED', eliminating client-side clock drift.
+
+-----------------------------------------------------------------------------
+SLIDE 11: TRANSACTION MANAGEMENT & PROCEDURES (ACID PROPERTIES)
+-----------------------------------------------------------------------------
+To prevent data anomalies, stored functions run processes within transaction scopes:
+
+* Stored Function: `allocate_room(p_student_id, p_room_id)`
+  - Encapsulates room booking validation and insertion in an atomic block.
+  - Step 1: Confirms the student's status is 'ACTIVE'.
+  - Step 2: Verifies the student does not already possess an active allocation.
+  - Step 3: Verifies the destination room status is 'AVAILABLE' and has open beds.
+  - Step 4: Inserts the allocation. (This triggers `trg_update_room_occupancy` atomically).
+  - Transaction Isolation: If any step fails, the entire transaction is rolled back, 
+    preventing double-booking anomalies (Atomicity & Isolation).
+
+* Stored Function: `vacate_room(p_student_id)`
+  - Finds the active allocation for the student and transitions the status to 'COMPLETED',
+    setting the vacated date to the current date. Atomically updates the occupied bed counts.
+
+-----------------------------------------------------------------------------
+SLIDE 12: CONCLUSION & DBMS CORE METRICS
+-----------------------------------------------------------------------------
+* Academic Takeaways from ResiKeep:
+  - Enforced Referential Integrity via strict Foreign Key Constraints (Cascade & Restrict actions).
+  - Maintained 3NF normalization throughout the 19 tables, eliminating modification anomalies.
+  - Demonstrated ACID properties (Atomicity, Consistency, Isolation, Durability) using Stored
+    Procedures and row locks during transactions.
+  - Offloaded operational business logic from FastAPI compute application server down to the database
+    engine using triggers and procedures, ensuring database-level data sanitization.
+=============================================================================

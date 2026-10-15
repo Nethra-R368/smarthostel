@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-light-bg text-light-textMain antialiased selection:bg-brand-tan selection:text-white;
+    font-family: 'Outfit', sans-serif;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-light-bg;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-light-border rounded-full hover:bg-brand-tan/50 transition-colors;
+}
+
+/* Light warm-themed classes */
+.theme-card {
+  @apply bg-light-card border border-light-border shadow-soft rounded-2xl p-6 transition-all duration-300 hover:shadow-card-glow;
+}
+
+.theme-input {
+  @apply bg-light-bg border border-light-border rounded-lg px-4 py-2.5 text-light-textMain placeholder-slate-400 focus:outline-none focus:border-brand-brown focus:ring-1 focus:ring-brand-brown/30 bg-white transition-all duration-200;
+}
+
+.theme-btn-primary {
+  @apply bg-brand-brown text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-brown/90 shadow-sm transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none;
+}
+
+.theme-btn-secondary {
+  @apply border border-light-border text-light-textMain bg-light-card font-semibold px-5 py-2.5 rounded-lg hover:bg-light-bg transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none;
+}
+
+.pulse-glow {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 4px rgba(122, 102, 82, 0.4));
+  }
+}
