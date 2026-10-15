@@ -1020,23 +1020,65 @@ def record_manual_payment(payment_in: schemas.PaymentCreate, current_user: model
 
 @admin_router.get("/reports/occupancy", response_model=List[Dict[str, Any]])
 def get_occupancy_report(current_user: models.User = Depends(RoleChecker(["ADMIN"])), db: Session = Depends(get_db)):
-    # Query database view: hostel_occupancy
+    # Query database view: hostel_occupancy with automatic self-healing fallback
     try:
         stmt = text("SELECT * FROM hostel_occupancy")
         results = db.execute(stmt).mappings().all()
         return [dict(r) for r in results]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to query view: {str(e)}")
+    except Exception:
+        try:
+            from ..db_init import init_views_and_triggers
+            init_views_and_triggers(db.get_bind())
+            stmt = text("SELECT * FROM hostel_occupancy")
+            results = db.execute(stmt).mappings().all()
+            return [dict(r) for r in results]
+        except Exception:
+            hostels = db.query(models.Hostel).all()
+            res = []
+            for h in hostels:
+                total_cap = sum(r.capacity for r in h.rooms) if h.rooms else h.capacity
+                occupied = sum(r.occupied_count for r in h.rooms) if h.rooms else 0
+                res.append({
+                    "hostel_id": h.hostel_id,
+                    "hostel_name": h.hostel_name,
+                    "hostel_type": h.hostel_type,
+                    "total_capacity": total_cap,
+                    "occupied_beds": occupied,
+                    "available_beds": max(0, total_cap - occupied),
+                    "occupancy_percentage": round((occupied / total_cap * 100), 2) if total_cap > 0 else 0.0
+                })
+            return res
 
 @admin_router.get("/reports/complaints", response_model=List[Dict[str, Any]])
 def get_complaint_summary_report(current_user: models.User = Depends(RoleChecker(["ADMIN"])), db: Session = Depends(get_db)):
-    # Query database view: complaint_summary
+    # Query database view: complaint_summary with self-healing fallback
     try:
         stmt = text("SELECT * FROM complaint_summary")
         results = db.execute(stmt).mappings().all()
         return [dict(r) for r in results]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to query view: {str(e)}")
+    except Exception:
+        try:
+            from ..db_init import init_views_and_triggers
+            init_views_and_triggers(db.get_bind())
+            stmt = text("SELECT * FROM complaint_summary")
+            results = db.execute(stmt).mappings().all()
+            return [dict(r) for r in results]
+        except Exception:
+            complaints = db.query(
+                models.Complaint.category,
+                models.Complaint.status,
+                models.Complaint.priority,
+                func.count(models.Complaint.complaint_id).label("complaint_count")
+            ).group_by(models.Complaint.category, models.Complaint.status, models.Complaint.priority).all()
+            return [
+                {
+                    "category": c.category,
+                    "status": c.status,
+                    "priority": c.priority,
+                    "complaint_count": c.complaint_count
+                }
+                for c in complaints
+            ]
 
 @admin_router.get("/reports/financials")
 def get_financials_report(current_user: models.User = Depends(RoleChecker(["ADMIN", "ACCOUNTANT"])), db: Session = Depends(get_db)):
@@ -1046,8 +1088,19 @@ def get_financials_report(current_user: models.User = Depends(RoleChecker(["ADMI
     pending = total_due - total_paid
 
     # Defaulters count (distinct student_ids with pending balance)
-    defaulters_stmt = text("SELECT COUNT(DISTINCT student_id) FROM pending_fees")
-    defaulters_count = db.execute(defaulters_stmt).scalar() or 0
+    try:
+        defaulters_stmt = text("SELECT COUNT(DISTINCT student_id) FROM pending_fees")
+        defaulters_count = db.execute(defaulters_stmt).scalar() or 0
+    except Exception:
+        try:
+            from ..db_init import init_views_and_triggers
+            init_views_and_triggers(db.get_bind())
+            defaulters_stmt = text("SELECT COUNT(DISTINCT student_id) FROM pending_fees")
+            defaulters_count = db.execute(defaulters_stmt).scalar() or 0
+        except Exception:
+            defaulters_count = db.query(models.StudentFee).filter(
+                models.StudentFee.amount_due > models.StudentFee.amount_paid
+            ).distinct(models.StudentFee.student_id).count()
 
     return {
         "total_fees": total_due,
@@ -1132,6 +1185,7 @@ def create_student_admin(student_in: schemas.StudentCreate, current_user: models
             year=student_in.year,
             gender=student_in.gender,
             date_of_birth=student_in.date_of_birth,
+            admission_date=date.today(),
             status="ACTIVE"
         )
         db.add(db_student)

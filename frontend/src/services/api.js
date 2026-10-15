@@ -29,7 +29,18 @@ const handleResponse = async (response) => {
     let errorDetail = "API Request failed";
     try {
       const errJson = await response.json();
-      errorDetail = errJson.detail || errorDetail;
+      if (typeof errJson.detail === "string") {
+        errorDetail = errJson.detail;
+      } else if (Array.isArray(errJson.detail)) {
+        errorDetail = errJson.detail.map((e) => {
+          const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : "field";
+          return `${field}: ${e.msg}`;
+        }).join("; ");
+      } else if (errJson.detail && typeof errJson.detail === "object") {
+        errorDetail = JSON.stringify(errJson.detail);
+      } else if (errJson.message) {
+        errorDetail = errJson.message;
+      }
     } catch (e) {}
     throw new Error(errorDetail);
   }

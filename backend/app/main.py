@@ -38,8 +38,17 @@ def on_startup():
         from .database import engine, Base, SessionLocal
         from . import models
         from .seeder import seed_mock_data
+        from .db_init import init_views_and_triggers
+
         Base.metadata.create_all(bind=engine)
         print("Database tables verified on startup.")
+
+        # Ensure SQL views and triggers exist in database
+        try:
+            init_views_and_triggers(engine)
+            print("Database views and triggers verified on startup.")
+        except Exception as ve:
+            print(f"Views initialization note: {ve}")
         
         # Check if database has initial users
         db = SessionLocal()
@@ -53,6 +62,13 @@ def on_startup():
     except Exception as e:
         err_type = type(e).__name__
         print(f"Database connection note during startup: {err_type} occurred. Verification skipped.")
+
+@app.post("/api/common/init-db-views")
+def trigger_init_views():
+    from .database import engine
+    from .db_init import init_views_and_triggers
+    init_views_and_triggers(engine)
+    return {"status": "success", "message": "Views and triggers created/updated successfully"}
 
 @app.post("/api/common/seed-initial-data")
 def trigger_seed():

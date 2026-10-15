@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from pydantic import BaseModel, EmailStr, field_validator
+from typing import Optional, List, Union
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -93,12 +93,33 @@ class RoomResponse(RoomBase):
 class StudentBase(BaseModel):
     roll_no: str
     name: str
-    email: EmailStr
+    email: str
     phone: Optional[str] = None
     department: Optional[str] = None
     year: Optional[int] = None
     gender: Optional[str] = None
     date_of_birth: Optional[date] = None
+
+    @field_validator("date_of_birth", mode="before")
+    @classmethod
+    def parse_dob(cls, v):
+        if not v or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
+
+    @field_validator("year", mode="before")
+    @classmethod
+    def parse_year(cls, v):
+        if v is None or v == "":
+            return None
+        return int(v)
+
+    @field_validator("phone", "department", mode="before")
+    @classmethod
+    def parse_empty_strings(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 class StudentCreate(StudentBase):
     username: str

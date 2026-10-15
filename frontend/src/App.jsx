@@ -2553,7 +2553,14 @@ function StudentsPanel({ role, students, onSubmit }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              onSubmit({ ...form, year: form.year ? parseInt(form.year) : null });
+              const payload = {
+                ...form,
+                year: form.year ? parseInt(form.year) : null,
+                date_of_birth: form.date_of_birth && form.date_of_birth.trim() !== "" ? form.date_of_birth : null,
+                phone: form.phone && form.phone.trim() !== "" ? form.phone : null,
+                department: form.department && form.department.trim() !== "" ? form.department : null,
+              };
+              onSubmit(payload);
               setForm({ username: "", password: "", roll_no: "", name: "", email: "", phone: "", department: "", year: "", gender: "Male", date_of_birth: "" });
             }}
             className="space-y-3"
