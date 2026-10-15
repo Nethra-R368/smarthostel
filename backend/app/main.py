@@ -52,13 +52,34 @@ app.include_router(common_router, prefix="/api")
 @app.on_event("startup")
 def on_startup():
     try:
-        from .database import engine, Base
+        from .database import engine, Base, SessionLocal
         from . import models
+        from .seeder import seed_mock_data
         Base.metadata.create_all(bind=engine)
         print("Database tables verified on startup.")
+        
+        # Check if database has initial users
+        db = SessionLocal()
+        try:
+            if db.query(models.User).count() == 0:
+                print("Fresh database detected. Initializing base accounts and hostels...")
+                result = seed_mock_data(db)
+                print(f"Auto-seed completed: {result.get('message')}")
+        finally:
+            db.close()
     except Exception as e:
         err_type = type(e).__name__
         print(f"Database connection note during startup: {err_type} occurred. Verification skipped.")
+
+@app.post("/api/common/seed-initial-data")
+def trigger_seed():
+    from .database import SessionLocal
+    from .seeder import seed_mock_data
+    db = SessionLocal()
+    try:
+        return seed_mock_data(db)
+    finally:
+        db.close()
 
 @app.get("/health")
 def health_check():
