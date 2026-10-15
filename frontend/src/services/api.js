@@ -1,5 +1,20 @@
 // SmartHostel API client wrapper
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
+// Intelligently resolve the live backend URL:
+let resolvedApiBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+
+if (
+  !resolvedApiBaseUrl ||
+  resolvedApiBaseUrl.includes("smarthostel-api.onrender.com") ||
+  (typeof window !== "undefined" && window.location.hostname.includes("onrender.com") && resolvedApiBaseUrl.includes("localhost"))
+) {
+  if (typeof window !== "undefined" && window.location.hostname.includes("onrender.com")) {
+    resolvedApiBaseUrl = "https://smarthostel-api-e1a1.onrender.com/api";
+  } else if (!resolvedApiBaseUrl) {
+    resolvedApiBaseUrl = "http://127.0.0.1:8000/api";
+  }
+}
+
+const API_BASE_URL = resolvedApiBaseUrl;
 
 const getHeaders = () => {
   const token = localStorage.getItem("sh_token");
