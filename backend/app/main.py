@@ -49,6 +49,16 @@ app.include_router(accountant_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(common_router, prefix="/api")
 
+@app.on_event("startup")
+def on_startup():
+    try:
+        from .database import engine, Base
+        from . import models
+        Base.metadata.create_all(bind=engine)
+        print("Database tables verified/created successfully on startup.")
+    except Exception as e:
+        print(f"Startup database check note: {e}")
+
 @app.get("/")
 def read_root():
     return {
