@@ -24,8 +24,9 @@ services:
   # ==============================================================================
   # React Vite Frontend (Render Static Site)
   # ==============================================================================
-  - type: static
+  - type: web
     name: smarthostel-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
